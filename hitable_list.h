@@ -8,7 +8,7 @@ class HitableList : public Hitable
 public:
     __device__ HitableList() {}
     __device__ HitableList(Hitable **l, int n) { list = l; list_size = n; }
-    __device__ bool hit(ray *pRayIn, float tMin, float tMax, hit_record &pRec) const;
+    __device__ bool hit(ray *pRayIn, float tMin, float tMax, hit_record &pRec) const override;
 
     Hitable **list;
     int list_size;

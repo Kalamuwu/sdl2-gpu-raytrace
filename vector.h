@@ -4,7 +4,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
-#include <curand_kernel.h>
+#include "hip-commons.h"
 
 class vec3
 {
@@ -33,12 +33,8 @@ public:
     __host__ __device__ inline vec3& operator*=(const float t);
     __host__ __device__ inline vec3& operator/=(const float t);
 
-    __host__ __device__ inline float length() const {
-        return sqrt( e[0]*e[0] + e[1]*e[1] + e[2]*e[2] );
-    }
-    __host__ __device__ inline float squared_length() const {
-        return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
-    }
+    __host__ __device__ inline float length() const;
+    __host__ __device__ inline float squared_length() const;
     __host__ __device__ inline void make_unit_vector();
     __host__ __device__ inline void make_pos_unit_vector();
 
@@ -54,6 +50,16 @@ public:
 
     float e[3];
 };
+
+__host__ __device__ inline float vec3::length() const
+{
+    return sqrt( e[0]*e[0] + e[1]*e[1] + e[2]*e[2] );
+}
+
+__host__ __device__ inline float vec3::squared_length() const
+{
+    return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
+}
 
 __host__ __device__ inline bool vec3::operator==(const vec3& v2) const
 {
@@ -187,12 +193,12 @@ __host__ inline vec3 random_in_unit_sphere()
     return p;
 }
 
-__device__ inline vec3 random_in_unit_sphere(curandState *pRandState)
+__device__ inline vec3 random_in_unit_sphere(hiprandState *pRandState)
 {
     vec3 p;
     do {
         // pick random point in unit cube
-        p = 2.0f*vec3(curand_uniform(pRandState),curand_uniform(pRandState),curand_uniform(pRandState)) - vec3(1,1,1);
+        p = 2.0f*vec3(hiprand_uniform(pRandState),hiprand_uniform(pRandState),hiprand_uniform(pRandState)) - vec3(1,1,1);
     // reject while not in unit sphere
     } while (p.squared_length() >= 1);
     return p;
@@ -237,6 +243,7 @@ __host__ __device__ inline vec3 vec3::clamp(const vec3& min, const vec3& max)
     );
 }
 
+#if 0
 __device__ inline vec3 vec3::clampTo01()
 {
     return vec3(
@@ -245,6 +252,7 @@ __device__ inline vec3 vec3::clampTo01()
         __saturatef(e[2])
     );
 }
+#endif
 
 __host__ __device__ inline vec3 vec3::modulo(const float t)
 {

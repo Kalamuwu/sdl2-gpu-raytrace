@@ -1,26 +1,47 @@
-CUDA_PATH     ?= /opt/cuda
-HOST_COMPILER  = g++
-NVCC           = $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
+CC_PATH      ?= /opt/rocm
+CC          = $(CC_PATH)/bin/hipcc -v
+
+BUILD_DIR     ?= build
+
+EXECUTABLE     = hipRT
+LIBRARIES      = -lSDL2 -lSDL2_image
+INCLUDES       = -I/opt/rocm/include -Iinclude
 
 # select one of these for Debug vs. Release
-#NVCC_DBG       = -g
-NVCC_DBG       =
+#CC_DBG        = -g
+CC_DBG        =
 
-NVCCFLAGS      = $(NVCC_DBG) -m64 --library SDL2,SDL2_image -forward-unknown-to-host-compiler -O3 -ffast-math -Wall -ftz=true -use_fast_math
-GENCODE_FLAGS  = -gencode arch=compute_86,code=sm_86
+CCFLAGS       = $(CC_DBG) $(INCLUDES) -std=c++11 -m64 -O3 -ffast-math -Wall -Wextra -Wpedantic
+LDFLAGS       = $(CC_DBG) $(LIBRARIES)
 
-# compile main.cu
-cudart:
-	$(NVCC) $(NVCCFLAGS) $(GENCODE_FLAGS) -o build/cudaRT.o -c main.cu    # link
-	$(NVCC) $(NVCCFLAGS) $(GENCODE_FLAGS) -o build/cudaRT build/cudaRT.o  # compile
+SOURCES = screen.cpp main.cu
+OBJECTS_C = $(SOURCES:.c=.o)
+OBJECTS_C_CPP = $(OBJECTS_C:.cpp=.o)
+OBJECTS_C_CPP_CU = $(OBJECTS_C_CPP:.cu=.o)
+OBJECTS = $(addprefix ${BUILD_DIR}/,$(OBJECTS_C_CPP_CU))
 
-# profiler
-profile_basic: cudaRT
-	ncu build/cudaRT
+.PHONY: all
+.DEFAULT: all
 
-# use nvprof --query-metrics
-profile_metrics: cudaRT
-	ncu --metrics smsp__inst_executed_pipe_fma,smsp__inst_executed_pipe_fp64 build/cudaRT
+all: $(EXECUTABLE)
+
+$(EXECUTABLE): $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$(EXECUTABLE) $(OBJECTS)
+
+$(BUILD_DIR)/%.o: %.c
+	$(CC) $(CCFLAGS) -c $< -o $@
+$(BUILD_DIR)/%.o: %.cpp
+	$(CC) $(CCFLAGS) -c $< -o $@
+$(BUILD_DIR)/%.o: %.cu
+	$(CC) $(CCFLAGS) -c $< -o $@
+
+# # profiler
+# profile_basic: hipRT
+# 	ncu $(BUILD_DIR)/hipRT
+#
+# # use nvprof --query-metrics
+# profile_metrics: hipRT
+# 	ncu --metrics smsp__inst_executed_pipe_fma,smsp__inst_executed_pipe_fp64 $(BUILD_DIR)/cudaRT
 
 clean:
-	rm -f build/*
+	rm -f $(BUILD_DIR)/*

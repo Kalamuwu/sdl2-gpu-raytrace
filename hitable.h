@@ -19,7 +19,7 @@ struct hit_record
 class Hitable
 {
 public:
-    __device__ virtual bool hit(ray *pRayIn, float tMin, float tMax, hit_record &pRec) const = 0;
+    __device__ bool virtual hit(ray *pRayIn, float tMin, float tMax, hit_record &pRec) const { return false; }
 };
 
 #endif

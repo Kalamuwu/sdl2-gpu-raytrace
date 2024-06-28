@@ -3,7 +3,7 @@
 
 #include <bits/stdc++.h>
 #include <cmath>
-#include <curand_kernel.h>
+#include "hip-commons.h"
 
 #include "vector.h"
 #include "ray.h"
@@ -12,7 +12,7 @@
 class Material
 {
 public:
-    __device__ virtual bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const = 0;
+    __device__ bool virtual scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const { return false; };
 };
 
 
@@ -22,7 +22,7 @@ class Diffuse : public Material
 public:
     __device__ Diffuse(const vec3& a) : albedo(a) {}
 
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const override
     {
         vec3 target = pRec.p + pRec.normal + random_in_unit_sphere(pRandState);
         *pRay = ray(pRec.p, target-pRec.p);
@@ -34,6 +34,7 @@ public:
     vec3 albedo;
 };
 
+
 // Metal -- Reflects incoming rays mirrored across the normal vector.
 // Simulates a mirror finish.
 class Metal : public Material
@@ -41,7 +42,7 @@ class Metal : public Material
 public:
     __device__ Metal(const vec3& a, const float f) : albedo(a) { fuzz = __saturatef(f); }
 
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const override
     {
         vec3 reflected = reflect(unit_vector(pRay->direction()), pRec.normal);
         *pRay = ray(pRec.p, reflected + fuzz*random_in_unit_sphere(pRandState));
@@ -61,7 +62,7 @@ class Emmissive : public Material
 public:
     __device__ Emmissive(const vec3& a, const float s, const bool c) : albedo(a), strength(s), continueTracing(c) {}
 
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const override
     {
         vec3 target = pRec.p + pRec.normal + random_in_unit_sphere(pRandState);
         *pRay = ray(pRec.p, target-pRec.p);
@@ -82,10 +83,7 @@ class Glass : public Material
 public:
     __device__ Glass(const vec3& a, const float ri) : albedo(a), ref_idx(ri) {}
 
-    // This was stolen from Peter Shirley's Ray Tracing in One Weekend. Don't
-    // ask me how it works. I have a basic understanding but not enough to
-    // teach anyone else.
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const override
     {
         vec3 outward_normal;
         vec3 reflected = reflect(pRay->direction(), pRec.normal);
@@ -108,16 +106,16 @@ public:
         if (this->refract(pRay->direction(), outward_normal, ni_over_nt, refracted))
         {
             float reflect_prob = this->schlick(1-cosine, ref_idx);
-            *pRay = ray(pRec.p, (curand_uniform(pRandState) < reflect_prob)? reflected : refracted);
+            *pRay = ray(pRec.p, (hiprand_uniform(pRandState) < reflect_prob)? reflected : refracted);
         }
         else *pRay = ray(pRec.p, reflected);
         isLightSource = false;
         return true;
     }
 
-    // Glass has reflectivity that varies with viewing angle. This is a massive
-    // ugly equation, but luckily Christophe Schlick came up with this simple
-    // polynomial approximation.
+    // Glass has reflectivity that varies with viewing angle. This is a
+    // massive ugly equation, but luckily Christophe Schlick came up with this
+    // simple polynomial approximation. :)
     __device__ float schlick(float cosine, float ref_idx) const
     {
         float r0 = (1-ref_idx) / (1+ref_idx);
@@ -125,7 +123,7 @@ public:
         return r0 + (1-r0)*cosine*cosine*cosine*cosine*cosine;
     }
 
-    // determines whether the viewing angle is steep enough for total internal
+    // Determines whether the viewing angle is steep enough for total internal
     // reflection (zero refraction) and refracts. this is based on snell's law:
     //    n sin(theta) = n' sin(theta')
     // common values:  air=1, glass=1.3-1.7, diamond=2.4
@@ -156,7 +154,7 @@ public:
         scattering =   __saturatef(t);
     }
 
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const override
     {
         float cosine = (dot(pRay->direction(), pRec.normal)) / (pRay->direction().length());
         cosine = 0.5f*(cosine+1);
@@ -174,14 +172,13 @@ public:
     float scattering;
 };
 
-
 // Normals -- Visualizes normals
 class Normals : public Material
 {
 public:
     __device__ Normals() {}
 
-    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, curandState *pRandState, bool &isLightSource) const
+    __device__ bool scatter(ray *pRay, const hit_record &pRec, vec3 &pAttenuation, hiprandState *pRandState, bool &isLightSource) const
     {
         pAttenuation = pRec.normal;
         isLightSource = true;
